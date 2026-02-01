@@ -1,0 +1,342 @@
+esphome:
+  name: esp-epaper-test
+  friendly_name: epaper office
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  encryption:
+    key: "xx"
+
+ota:
+  - platform: esphome
+    password: "xx"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Esp-Epaper-Test Fallback Hotspot"
+    password: "xx"
+
+captive_portal:
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 14
+    glyphs: ['&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', 'æ', 'ø', 'Å', 'Ä', 'Ö', 'Æ', 'Ø']
+  
+  - file: "gfonts://Roboto"
+    id: font_medium
+    size: 18
+    glyphs: ['&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', 'æ', 'ø', 'Å', 'Ä', 'Ö', 'Æ', 'Ø']
+  
+  - file: "gfonts://Roboto"
+    id: font_large
+    size: 24
+    glyphs: ['&', '@', '!', ',', '.', '"', '%', '(', ')', '+', '-', '_', ':', '°', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'å', 'ä', 'ö', 'æ', 'ø', 'Å', 'Ä', 'Ö', 'Æ', 'Ø']
+  
+  - file: 'https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf'
+    id: font_weather_icons
+    size: 30
+    glyphs:
+      - "\U000F0599" # sun
+      - "\U000F0595" # partly-cloudy
+      - "\U000F0590" # cloudy
+      - "\U000F0591" # fog
+      - "\U000F0596" # pouring
+      - "\U000F0597" # rainy
+      - "\U000F0598" # snowy
+      - "\U000F0593" # lightning
+      - "\U000F067E" # lightning-rainy
+      - "\U000F067F" # snowy-rainy
+      - "\U000F059A" # night
+
+# === SCRIPT FOR 15 MIN TIMER ===
+script:
+  - id: temp_work_mode_timer
+    mode: restart
+    then:
+      - delay: 15min
+      - switch.turn_off: work_calendar_switch
+
+button:
+  - platform: template
+    name: "Refresh Display"
+    icon: "mdi:refresh"
+    on_press:
+      - component.update: epaper_display
+
+switch:
+  - platform: template
+    name: "Show Work Calendar"
+    icon: "mdi:calendar"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    id: work_calendar_switch
+    turn_on_action:
+      - component.update: epaper_display
+      # Check if outside work hours (07:00 - 15:15)
+      - if:
+          condition:
+            lambda: |-
+              auto time = id(ha_time).now();
+              int now_mins = time.hour * 60 + time.minute;
+              // 07:00 is 420 mins. 15:15 is 915 mins.
+              // If BEFORE 07:00 or AFTER 15:15 -> Start Timer
+              return (now_mins < 420 || now_mins >= 915);
+          then:
+            - script.execute: temp_work_mode_timer
+    turn_off_action:
+      - component.update: epaper_display
+      - script.stop: temp_work_mode_timer
+      
+sensor:
+  - platform: homeassistant
+    id: living_room_temp
+    entity_id: sensor.ikea_of_sweden_vindstyrka_temperature
+    internal: true
+  
+  - platform: homeassistant
+    id: outside_temp
+    entity_id: sensor.lumi_lumi_weather_temperature_2_temperature_2
+    internal: true
+  
+  - platform: homeassistant
+    id: weather_temp
+    entity_id: weather.forecast_home
+    attribute: temperature
+    internal: true
+
+text_sensor:
+  - platform: template
+    name: "E-Paper Status"
+    id: epaper_status_sensor
+    icon: "mdi:information-outline"
+
+  - platform: homeassistant
+    id: next_meeting
+    entity_id: calendar.work
+    attribute: message
+    internal: true
+  
+  - platform: homeassistant
+    id: meeting_time
+    entity_id: calendar.work
+    attribute: start_time
+    internal: true
+  
+  - platform: homeassistant
+    id: forecast_1_temp
+    entity_id: input_text.epaper_forecast_1_temp
+    internal: true
+  
+  - platform: homeassistant
+    id: forecast_1_condition
+    entity_id: input_text.epaper_forecast_1_condition
+    internal: true
+  
+  - platform: homeassistant
+    id: forecast_2_temp
+    entity_id: input_text.epaper_forecast_2_temp
+    internal: true
+  
+  - platform: homeassistant
+    id: forecast_2_condition
+    entity_id: input_text.epaper_forecast_2_condition
+    internal: true
+  
+  - platform: homeassistant
+    id: forecast_3_temp
+    entity_id: input_text.epaper_forecast_3_temp
+    internal: true
+  
+  - platform: homeassistant
+    id: forecast_3_condition
+    entity_id: input_text.epaper_forecast_3_condition
+    internal: true
+
+time:
+  - platform: homeassistant
+    id: ha_time
+    on_time:
+      # Force refresh at peeks
+      - cron: '0 0,30 * * * *'
+        then:
+          - component.update: epaper_display
+      # Turn OFF at 15:15 automatically
+      - cron: '0 15 15 * * *'
+        then:
+          - switch.turn_off: work_calendar_switch
+
+display:
+  - platform: waveshare_epaper
+    id: epaper_display
+    cs_pin: GPIO5
+    dc_pin: GPIO17
+    busy_pin: GPIO4
+    reset_pin: GPIO16
+    model: 2.13inv2
+    rotation: 90
+    update_interval: 5min
+    full_update_every: 1
+    lambda: |-
+      // --- 1. Draw Static Elements ---
+      it.printf(40, 10, id(font_small), TextAlign::TOP_CENTER, "Living Room");
+      it.printf(40, 30, id(font_large), TextAlign::TOP_CENTER, "%.1f°C", id(living_room_temp).state);
+      
+      it.printf(30, 65, id(font_small), TextAlign::TOP_CENTER, "Outside");
+      it.printf(40, 85, id(font_large), TextAlign::TOP_CENTER, "%.1f°C", id(outside_temp).state);
+      
+      it.line(80, 10, 80, 110);
+      
+      // --- 2. Helper Functions & Variables ---
+      auto time = id(ha_time).now();
+      int current_hour = time.hour;
+      int current_minute = time.minute;
+      
+      auto get_weather_icon = [](const std::string &condition) -> const char* {
+          if (condition == "sunny") return "\U000F0599";
+          if (condition == "clear-night") return "\U000F059A";
+          if (condition == "partlycloudy") return "\U000F0595";
+          if (condition == "cloudy") return "\U000F0590";
+          if (condition == "fog") return "\U000F0591";
+          if (condition == "hail" || condition == "pouring") return "\U000F0596";
+          if (condition == "rainy") return "\U000F0597";
+          if (condition == "snowy") return "\U000F0598";
+          if (condition == "lightning") return "\U000F0593";
+          if (condition == "lightning-rainy") return "\U000F067E";
+          if (condition == "snowy-rainy") return "\U000F067F";
+          return "\U000F0590";
+      };
+
+      // --- 3. Calculate Meeting Time Logic ---
+      int diff_minutes = 99999; 
+      struct tm meeting_tm = {};
+      bool has_valid_meeting = false;
+
+      if (id(meeting_time).has_state()) {
+        std::string time_str = id(meeting_time).state;
+        strptime(time_str.c_str(), "%Y-%m-%d %H:%M:%S", &meeting_tm);
+        time_t meeting_timestamp = mktime(&meeting_tm);
+        time_t now_timestamp = id(ha_time).now().timestamp;
+        
+        int diff_seconds = meeting_timestamp - now_timestamp;
+        diff_minutes = diff_seconds / 60;
+        has_valid_meeting = true;
+      }
+
+      // --- 4. Decide What to Show ---
+      bool calendar_enabled = id(work_calendar_switch).state;
+      
+      // Define "Regular" work hours (07:00 to 15:15)
+      bool is_regular_work_hours = (current_hour >= 7 && (current_hour < 15 || (current_hour == 15 && current_minute < 15)));
+      
+      bool is_peek_time = (current_minute == 0 || current_minute == 30);
+      bool meeting_is_soon = (diff_minutes < 1440); 
+      
+      bool show_meeting_screen = false;
+      std::string status_msg = "Starting...";
+
+      // Logic: If Switch is ON (Enabled), we try to show calendar regardless of time.
+      if (calendar_enabled) {
+         if (meeting_is_soon) {
+            // URGENT MODE
+            if (!is_peek_time) {
+               show_meeting_screen = true;
+               status_msg = "Meeting Mode";
+            } else {
+               status_msg = "Peek: Weather";
+            }
+         } else {
+            // DISTANT MODE
+            if (is_peek_time) {
+               show_meeting_screen = true;
+               status_msg = "Peek: Next Meeting";
+            } else {
+               status_msg = "Weather Mode";
+            }
+         }
+         
+         // OVERRIDE Status text if this is a temporary activation (outside regular hours)
+         if (!is_regular_work_hours) {
+            status_msg = "Active (15min)";
+         }
+
+      } else {
+         // Switch is OFF
+         status_msg = "Calendar Switch Off";
+      }
+      
+      if (id(epaper_status_sensor).state != status_msg) {
+        id(epaper_status_sensor).publish_state(status_msg);
+      }
+
+      // --- 5. Render Selected Screen ---
+      if (show_meeting_screen) {
+        // === SHOW CALENDAR ===
+        it.printf(165, 10, id(font_medium), TextAlign::TOP_CENTER, "Next Meeting");
+        
+        if (has_valid_meeting && id(next_meeting).has_state()) {
+          it.printf(165, 35, id(font_medium), TextAlign::TOP_CENTER, "%s", id(next_meeting).state.c_str());
+          
+          if (diff_minutes < -10) {
+            it.printf(165, 60, id(font_large), TextAlign::TOP_CENTER, "In progress");
+          } else if (diff_minutes < 0) {
+            it.printf(165, 60, id(font_large), TextAlign::TOP_CENTER, "Now!");
+          } else if (diff_minutes < 60) {
+            it.printf(165, 60, id(font_large), TextAlign::TOP_CENTER, "in %d min", diff_minutes);
+          } else if (diff_minutes < 1440) {
+            int diff_hours = diff_minutes / 60;
+            int remaining_mins = diff_minutes % 60;
+            it.printf(165, 60, id(font_large), TextAlign::TOP_CENTER, "%dhr %dmin", diff_hours, remaining_mins);
+          } else {
+            char date_buffer[16];
+            strftime(date_buffer, sizeof(date_buffer), "%b %d", &meeting_tm);
+            it.printf(165, 60, id(font_large), TextAlign::TOP_CENTER, "%s", date_buffer);
+          }
+        } else {
+          it.printf(165, 40, id(font_large), TextAlign::TOP_CENTER, "No meetings");
+        }
+        
+      } else {
+        // === SHOW WEATHER ===
+        it.printf(165, 5, id(font_medium), TextAlign::TOP_CENTER, "Next Hours");
+        
+        // Hour 1
+        it.printf(120, 25, id(font_medium), TextAlign::TOP_CENTER, "+1h");
+        if (id(forecast_1_condition).has_state()) {
+          it.print(120, 45, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_1_condition).state));
+        }
+        if (id(forecast_1_temp).has_state()) {
+          it.printf(120, 83, id(font_large), TextAlign::TOP_CENTER, "%s°", id(forecast_1_temp).state.c_str());
+        }
+        
+        // Hour 2
+        it.printf(165, 25, id(font_medium), TextAlign::TOP_CENTER, "+2h");
+        if (id(forecast_2_condition).has_state()) {
+          it.print(165, 45, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_2_condition).state));
+        }
+        if (id(forecast_2_temp).has_state()) {
+          it.printf(165, 83, id(font_large), TextAlign::TOP_CENTER, "%s°", id(forecast_2_temp).state.c_str());
+        }
+        
+        // Hour 3
+        it.printf(210, 25, id(font_medium), TextAlign::TOP_CENTER, "+3h");
+        if (id(forecast_3_condition).has_state()) {
+          it.print(210, 45, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_3_condition).state));
+        }
+        if (id(forecast_3_temp).has_state()) {
+          it.printf(210, 83, id(font_large), TextAlign::TOP_CENTER, "%s°", id(forecast_3_temp).state.c_str());
+        }
+      }
