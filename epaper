@@ -1,0 +1,374 @@
+esphome:
+  name: epaper
+  friendly_name: epaper
+  includes:
+    - "<ctime>"
+    - "<cctype>"
+    - "<string>"
+  on_boot:
+    priority: 600
+    then:
+      - output.turn_on: bsp_battery_enable
+      - delay: 200ms
+      - component.update: battery_voltage
+      - component.update: battery_level
+
+# ===================== TUNABLES =====================
+substitutions:
+  DISPLAY_AUTO_INTERVAL: "5min"
+  BATTERY_SAMPLE_INTERVAL: "24hours"
+  FORCE_REFRESH_LIMIT_MIN: "1"
+  device_name: "epaper-dashboard"
+  friendly_name: "E-Paper Dashboard"
+  quote_entity: "input_text.epaper_message"
+  # IMPORTANT: Change this to your actual outdoor temperature sensor
+  current_temp_entity: "sensor.lumi_lumi_weather_temperature_2_temperature_2"
+# ====================================================
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+logger:
+  level: INFO
+  baud_rate: 0
+
+api:
+  encryption:
+    key: "xx"
+
+ota:
+  platform: esphome
+  password: "xx"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  power_save_mode: LIGHT
+  output_power: 8.5dB
+  ap:
+    ssid: "Epaper Fallback Hotspot"
+    password: "xx"
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
+# ====== FONTS (Keep your existing font section) ======
+font:
+  - file: "gfonts://Inter"
+    id: font_time
+    size: 96
+    glyphs: ' :0123456789'
+  - file: "gfonts://Inter"
+    id: font_ui
+    size: 28
+    glyphs: '!"%()+=,-_.:°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyzæøåÆØÅ'
+  - file: "materialdesignicons-webfont.ttf"
+    id: font_weather_icons
+    size: 40
+    glyphs:
+      - "\U000F0599" # sun
+      - "\U000F0595" # partly-cloudy
+      - "\U000F0590" # cloudy
+      - "\U000F0591" # fog
+      - "\U000F0596" # pouring
+      - "\U000F0597" # rainy
+      - "\U000F0598" # snowy
+      - "\U000F0593" # lightning
+      - "\U000F067E" # lightning-rainy
+      - "\U000F067F" # snowy-rainy
+      - "\U000F059A" # night
+
+# ====== HARDWARE (Keep your existing hardware sections) ======
+spi:
+  clk_pin: GPIO7
+  mosi_pin: GPIO9
+
+output:
+  - platform: gpio
+    pin: GPIO6
+    id: bsp_battery_enable
+
+# ====== SENSORS ======
+sensor:
+  - platform: adc
+    pin: GPIO1
+    id: battery_voltage
+    name: "Battery Voltage"
+    attenuation: 12db
+    update_interval: ${BATTERY_SAMPLE_INTERVAL}
+    filters:
+      - multiply: 2.0
+  - platform: template
+    id: battery_level
+    name: "Battery Level"
+    unit_of_measurement: "%"
+    device_class: battery
+    state_class: measurement
+    update_interval: ${BATTERY_SAMPLE_INTERVAL}
+    lambda: |-
+      return id(battery_voltage).state;
+    filters:
+      - calibrate_linear:
+          - 4.15 -> 100.0
+          - 3.96 -> 90.0
+          - 3.91 -> 80.0
+          - 3.85 -> 70.0
+          - 3.80 -> 60.0
+          - 3.75 -> 50.0
+          - 3.68 -> 40.0
+          - 3.58 -> 30.0
+          - 3.49 -> 20.0
+          - 3.41 -> 10.0
+          - 3.30 -> 5.0
+          - 3.27 -> 0.0
+      - clamp:
+          min_value: 0
+          max_value: 100
+  # ADDED sensor to get the current temperature from Home Assistant
+  - platform: homeassistant
+    id: current_temp
+    entity_id: ${current_temp_entity}
+    internal: true
+
+# ====== TEXT SENSORS ======
+text_sensor:
+  - platform: homeassistant
+    id: last_bottle_time
+    entity_id: input_datetime.last_bottle
+    internal: true
+  - platform: homeassistant
+    id: last_pump_time
+    entity_id: input_datetime.last_pump
+    internal: true
+  - platform: homeassistant
+    id: last_nappy_time
+    entity_id: input_datetime.last_nappy
+    internal: true
+  - platform: homeassistant
+    id: daily_quote
+    entity_id: ${quote_entity}
+    internal: true
+  # ADDED text sensors to read the helpers from Home Assistant
+  - platform: homeassistant
+    id: forecast_1_temp
+    entity_id: input_text.epaper_forecast_1_temp
+    internal: true
+  - platform: homeassistant
+    id: forecast_1_condition
+    entity_id: input_text.epaper_forecast_1_condition
+    internal: true
+  - platform: homeassistant
+    id: forecast_2_temp
+    entity_id: input_text.epaper_forecast_2_temp
+    internal: true
+  - platform: homeassistant
+    id: forecast_2_condition
+    entity_id: input_text.epaper_forecast_2_condition
+    internal: true
+  - platform: homeassistant
+    id: forecast_3_temp
+    entity_id: input_text.epaper_forecast_3_temp
+    internal: true
+  - platform: homeassistant
+    id: forecast_3_condition
+    entity_id: input_text.epaper_forecast_3_condition
+    internal: true
+  - platform: homeassistant
+    id: forecast_4_temp
+    entity_id: input_text.epaper_forecast_4_temp
+    internal: true
+  - platform: homeassistant
+    id: forecast_4_condition
+    entity_id: input_text.epaper_forecast_4_condition
+    internal: true
+  - platform: homeassistant
+    id: forecast_5_temp
+    entity_id: input_text.epaper_forecast_5_temp
+    internal: true
+  - platform: homeassistant
+    id: forecast_5_condition
+    entity_id: input_text.epaper_forecast_5_condition
+    internal: true
+
+# ====== BUTTONS AND SCRIPTS (Simplified) ======
+globals:
+  - id: last_refresh_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+script:
+  - id: force_refresh_display
+    then:
+      - lambda: |-
+          const uint32_t now_ms = millis();
+          const uint32_t min_gap = ${FORCE_REFRESH_LIMIT_MIN} * 60 * 1000;
+          if (min_gap > 0 && (now_ms - id(last_refresh_ms) < min_gap)) {
+            ESP_LOGI("refresh", "Skipped refresh (throttled).");
+            return;
+          }
+          id(last_refresh_ms) = now_ms;
+      - output.turn_on: bsp_battery_enable
+      - delay: 300ms
+      - component.update: battery_voltage
+      - component.update: battery_level
+      # The display will update automatically when the helpers change.
+      # But a manual press should force a redraw.
+      - component.update: epaper_display
+
+button:
+  - platform: template
+    name: "Force Refresh"
+    icon: "mdi:refresh"
+    on_press:
+      - script.execute: force_refresh_display
+
+# ====== DISPLAY ======
+display:
+  - platform: waveshare_epaper
+    id: epaper_display
+    model: 7.50inv2
+    cs_pin: GPIO44
+    dc_pin: GPIO10
+    reset_pin: GPIO38
+    busy_pin:
+      number: GPIO4
+      inverted: true
+    rotation: 90
+    update_interval: ${DISPLAY_AUTO_INTERVAL}
+    lambda: |-
+      // --- TIME AND DATE ---
+      it.strftime(25, 25, id(font_ui), TextAlign::TOP_LEFT, "%A, %B %d", id(ha_time).now());
+      it.strftime(475, 40, id(font_time), TextAlign::TOP_RIGHT, "%H:%M", id(ha_time).now());
+
+      // --- BENJAMIN'S INFO ---
+      it.print(25, 310, id(font_ui), "Benjamin");
+      auto print_elapsed_time = [&](int label_x, int time_x, int y, const char* label, text_sensor::TextSensor* sensor) {
+        it.print(label_x, y, id(font_ui), TextAlign::TOP_LEFT, label);
+        if (!sensor->has_state()) { it.print(time_x, y, id(font_ui), TextAlign::TOP_LEFT, "--:--"); return; }
+        int year, month, day, hour, minute, second;
+        if (sscanf(sensor->state.c_str(), "%d-%d-%d %d:%d:%d", &year,&month,&day,&hour,&minute,&second) < 6) { it.print(time_x, y, id(font_ui), TextAlign::TOP_LEFT, "ERR"); return; }
+        
+        struct tm last_tm = {};
+        last_tm.tm_year = year - 1900; last_tm.tm_mon = month - 1; last_tm.tm_mday = day;
+        last_tm.tm_hour = hour; last_tm.tm_min = minute; last_tm.tm_sec = second; last_tm.tm_isdst = -1;
+        time_t last_ts = mktime(&last_tm);
+        time_t now_ts = id(ha_time).now().timestamp;
+        if (last_ts <= 0 || last_ts > now_ts) { it.print(time_x, y, id(font_ui), TextAlign::TOP_LEFT, "00:00"); return; }
+        int diff = now_ts - last_ts; int hh = diff / 3600; int mm = (diff % 3600) / 60;
+        it.printf(time_x, y, id(font_ui), TextAlign::TOP_LEFT, "%02d:%02d", hh, mm);
+      };
+      print_elapsed_time(25, 125, 340, "Bottle:", id(last_bottle_time));
+      print_elapsed_time(25, 125, 365, "Pump:",   id(last_pump_time));
+      print_elapsed_time(25, 125, 390, "Nappy:",  id(last_nappy_time));
+      
+      // --- SEPARATOR LINE ---
+      it.line(0, 280, 480, 280);
+
+      // --- WEATHER LOGIC USING HELPERS ---
+      if (id(current_temp).has_state()) {
+        it.printf(25, 65, id(font_ui), TextAlign::TOP_LEFT, "%.1f°C", id(current_temp).state);
+      } else {
+        it.print(25, 65, id(font_ui), TextAlign::TOP_LEFT, "Outdoor: N/A");
+      }
+
+      auto get_weather_icon = [](const std::string &condition) -> const char* {
+          if (condition == "sunny") return "\U000F0599";
+          if (condition == "clear-night") return "\U000F059A";
+          if (condition == "partlycloudy") return "\U000F0595";
+          if (condition == "cloudy") return "\U000F0590";
+          if (condition == "fog") return "\U000F0591";
+          if (condition == "hail" || condition == "pouring") return "\U000F0596";
+          if (condition == "rainy") return "\U000F0597";
+          if (condition == "snowy") return "\U000F0598";
+          if (condition == "lightning") return "\U000F0593";
+          if (condition == "lightning-rainy") return "\U000F067E";
+          if (condition == "snowy-rainy") return "\U000F067F";
+          return "\U000F0590"; // Default icon
+      };
+
+      // --- HOURLY FORECAST DISPLAY ---
+      int x_pos = 45;
+      int y_pos = 220;
+      time_t now = id(ha_time).now().timestamp;
+      struct tm* tm_info = localtime(&now);
+      int current_hour = tm_info->tm_hour;
+
+      // Forecast 1
+      if (id(forecast_1_temp).has_state() && id(forecast_1_condition).has_state()) {
+        it.printf(x_pos, y_pos - 55, id(font_ui), TextAlign::TOP_CENTER, "%02d:00", (current_hour + 1) % 24);
+        it.print(x_pos, y_pos - 25, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_1_condition).state));
+        it.printf(x_pos, y_pos + 25, id(font_ui), TextAlign::TOP_CENTER, "%s°", id(forecast_1_temp).state.c_str());
+      }
+      x_pos += 98;
+
+      // Forecast 2
+      if (id(forecast_2_temp).has_state() && id(forecast_2_condition).has_state()) {
+        it.printf(x_pos, y_pos - 55, id(font_ui), TextAlign::TOP_CENTER, "%02d:00", (current_hour + 2) % 24);
+        it.print(x_pos, y_pos - 25, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_2_condition).state));
+        it.printf(x_pos, y_pos + 25, id(font_ui), TextAlign::TOP_CENTER, "%s°", id(forecast_2_temp).state.c_str());
+      }
+      x_pos += 98;
+
+      // Forecast 3
+      if (id(forecast_3_temp).has_state() && id(forecast_3_condition).has_state()) {
+        it.printf(x_pos, y_pos - 55, id(font_ui), TextAlign::TOP_CENTER, "%02d:00", (current_hour + 3) % 24);
+        it.print(x_pos, y_pos - 25, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_3_condition).state));
+        it.printf(x_pos, y_pos + 25, id(font_ui), TextAlign::TOP_CENTER, "%s°", id(forecast_3_temp).state.c_str());
+      }
+      x_pos += 98;
+    
+      // Forecast 4
+      if (id(forecast_4_temp).has_state() && id(forecast_4_condition).has_state()) {
+        it.printf(x_pos, y_pos - 55, id(font_ui), TextAlign::TOP_CENTER, "%02d:00", (current_hour + 4) % 24);
+        it.print(x_pos, y_pos - 25, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_4_condition).state));
+        it.printf(x_pos, y_pos + 25, id(font_ui), TextAlign::TOP_CENTER, "%s°", id(forecast_4_temp).state.c_str());
+      }
+      x_pos += 98;
+
+      // Forecast 5
+      if (id(forecast_5_temp).has_state() && id(forecast_5_condition).has_state()) {
+        it.printf(x_pos, y_pos - 55, id(font_ui), TextAlign::TOP_CENTER, "%02d:00", (current_hour + 5) % 24);
+        it.print(x_pos, y_pos - 25, id(font_weather_icons), TextAlign::TOP_CENTER, get_weather_icon(id(forecast_5_condition).state));
+        it.printf(x_pos, y_pos + 25, id(font_ui), TextAlign::TOP_CENTER, "%s°", id(forecast_5_temp).state.c_str());
+      }
+
+      // --- DAILY QUOTE ---
+      if (id(daily_quote).has_state()) {
+        int max_width = 450;
+        int x_start = 25;
+        int y_start = 650;
+        int line_height = id(font_ui)->get_height() + 8;
+        auto* font = id(font_ui);
+        std::string text = id(daily_quote).state;
+        std::string line_buffer = "";
+        std::string word_buffer = "";
+        text += ' '; 
+        for (char c : text) {
+          if (isspace(c)) {
+            if (word_buffer.empty()) continue;
+            std::string test_line = line_buffer.empty() ? word_buffer : line_buffer + " " + word_buffer;
+            int x_offset, y_offset, width, height;
+            it.get_text_bounds(0, 0, test_line.c_str(), font, TextAlign::TOP_LEFT, &x_offset, &y_offset, &width, &height);
+            if (width > max_width) {
+              it.print(x_start, y_start, font, TextAlign::TOP_LEFT, line_buffer.c_str());
+              y_start += line_height;
+              line_buffer = word_buffer;
+            } else {
+              line_buffer = test_line;
+            }
+            word_buffer = "";
+          } else {
+            word_buffer += c;
+          }
+        }
+        if (!line_buffer.empty()) {
+          it.print(x_start, y_start, font, TextAlign::TOP_LEFT, line_buffer.c_str());
+        }
+      }
